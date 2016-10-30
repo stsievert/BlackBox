@@ -18,7 +18,7 @@ HARD - 5. thread safety - lets think about what needs to be made thread safe
 - not sure how to get around that 
 
 
-6. asynchronous writes through the serializer
+6. asynchronous writes through the serializer - kind of done - currently requires a forced 'backup' 
 7. clearing and setting of overheads
 DONE 8. set end_time in land
 '''
@@ -85,6 +85,7 @@ class Recorder():
         
         if self.run is None:
             raise Exception('No flight to stop!')
+        self.save(backup=True)
         self.run.end_time = time.time()
         self.current_state = {}
         self.context = {}
@@ -104,7 +105,7 @@ class Recorder():
         '''
         context[key] = name
         
-    def save(self, level = 2, verbose = False):
+    def save(self, level = 2, verbose = False, backup=False):
         '''
         Save the current state. This by default adds the current line number, file and function name.
         Updates the experiment object as well with this run.
@@ -118,19 +119,18 @@ class Recorder():
         #                      'function':frame[3]})
         self.current_state.update(self.context)
         self.run.add_state(self.current_state)
-        # reset the current_state and the context
         if verbose:
             l = ["{}: {}".format(key,item) for key,item in self.current_state.iteritems()]
             l = "State Saved: {}".format(' '.join(l))
             print l
-            
+        # reset the current_state and the context
         self.context = {}
         self.current_state = {}
-
-        # if self.parallel_write:
-        #     self.listener.put(self.experiment, self.run)
-        # else:
-        #     self.serializer.save_run(self.experiment, self.run)
+        if backup==True:
+            if self.parallel_write:
+                self.listener.put(self.experiment, self.run)
+            else:
+                self.serializer.save_run(self.experiment, self.run)
 
         
 class Serializer():
@@ -292,7 +292,7 @@ class Run():
 
 class AsyncListener():
     '''
-    Asynchronous writer
+    Fairly general purpose asynchronous daemon.
     See: http://stackoverflow.com/questions/641420/how-should-i-log-while-using-multiprocessing-in-python/894284#894284
 
     for a similar implemenation in logging.
