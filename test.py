@@ -32,10 +32,10 @@ for i in range(10):
     blackbox.land()
 
 
-exp = blackbox.get_experiment('SquareRoot')
-print exp.list_runs()
-run = exp.get_run('Newton method 1')
-print run.events
+#exp = blackbox.get_experiment('SquareRoot')
+#print exp.list_runs()
+#run = exp.get_run('Newton method 1')
+#print run.events
 '''
 As of right now, its not clear how this would handle multiple threads. It's also not clear what should be locked to handle multithreading effectively.
 

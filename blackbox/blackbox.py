@@ -12,14 +12,19 @@ DONE 1. prevent the overwrite of a run - unless you force it
 DONE 2. fix the decorator
 DONE 3. test access methods
 4. try to generate basic docs, update readme.md
-5. thread safety - lets think about what needs to be made thread safe
+
+HARD - 5. thread safety - lets think about what needs to be made thread safe 
+- for now the best practice around this is a new run for process
+- not sure how to get around that 
+
+
 6. asynchronous writes through the serializer
 7. clearing and setting of overheads
 DONE 8. set end_time in land
 '''
 
-import sys, inspect, os, time, uuid, shelve, traceback
-
+import sys, inspect, os, time, uuid, shelve, traceback, threading
+from multiprocessing import Manager, Queue
 class Recorder():
     '''
     Blackbox Recorder.  
@@ -32,11 +37,13 @@ class Recorder():
         '''
         self.experiment = None
         self.run = None
-        self.current_state = {}
-        self.context = {}
+        self.Manager = Manager()
+        self.current_state = {}#Manager.dict()
+        self.context = {}#Manager.dict()
         self.serializer = ShelveSerializer()
+        self.listener = AsyncListener(self.serializer)
+        self.parallel_write = True
         
-
     def set_experiment(self, name):
         '''
         Set the current experiment from the serializer
@@ -68,7 +75,8 @@ class Recorder():
             raise Exception('Run %s already exists in this experiment'%(name))
         self.run = Run(name, description)
         self.serializer.save_run(self.experiment, self.run)
-    
+        if self.parallel_write:
+            self.listener.start()
         
     def stop_run(self):
         '''
@@ -82,6 +90,7 @@ class Recorder():
         self.context = {}
         self.flying = False
         self.run = None
+        #self.listener.stop()
         
     def log(self, key, item):
         '''
@@ -101,13 +110,13 @@ class Recorder():
         Updates the experiment object as well with this run.
         TODO: make this update async - currently it is on the main calling thread
         '''
-        # Get the current stack and pull necessary info from the calling functions
-        frame = inspect.stack()[level]
-        self.context.update({'module':frame[1],
-                        'line':frame[2],
-                        'function':frame[3]})
+        #Get the current stack and pull necessary info from the calling functions
+        # uncomment this to get stack frame info - it is extremely slow so it is toggled off
+        # frame = inspect.stack()[level]
+        # self.context.update({'module':frame[1],
+        #                      'line':frame[2],
+        #                      'function':frame[3]})
         self.current_state.update(self.context)
-        
         self.run.add_state(self.current_state)
         # reset the current_state and the context
         if verbose:
@@ -117,9 +126,12 @@ class Recorder():
             
         self.context = {}
         self.current_state = {}
-        # Is this the right way to do this?
-        # Do I even need an experiment object floating around?
-        self.serializer.save_run(self.experiment, self.run)
+
+        # if self.parallel_write:
+        #     self.listener.put(self.experiment, self.run)
+        # else:
+        #     self.serializer.save_run(self.experiment, self.run)
+
         
 class Serializer():
     '''
@@ -129,6 +141,7 @@ class Serializer():
     '''
     def __init__(self):
         pass
+
     
     def get_experiment(self, name):
         raise NotImplementedError('get_experiment must be implemented '
@@ -156,7 +169,7 @@ class Serializer():
 class ShelveSerializer(Serializer):
     def __init__(self, directory='.experiments'):
         self.directory = os.path.abspath(directory)
-            
+    
     def get_experiment(self, name, description = None, create_not_exists=False):
         '''
         Shelve implementation of get_experiment. The experiment is stored in a shelve in the .experiments directory.
@@ -275,6 +288,43 @@ class Run():
         '''
         state.update({'timestamp': time.time()})
         self.events.append(state)
+        #self.events.put(state)
+
+class AsyncListener():
+    '''
+    Asynchronous writer
+    See: http://stackoverflow.com/questions/641420/how-should-i-log-while-using-multiprocessing-in-python/894284#894284
+
+    for a similar implemenation in logging.
+    '''
+    def __init__(self, serializer):
+        self.queue = Queue()
+        self.serializer = serializer
+        self.t = threading.Thread(target=self.process)
+        self.t.daemon = True
+        self.count = 0
+
+    def start(self):
+        self.t.start()
+        
+    def process(self):
+        while True:
+            try:
+                s = self.queue.get()
+                experiment, run = s#self.queue.get() 
+                self.serializer.save_run(experiment, run)
+            except EOFError:
+                break
+            except:
+                raise
+
+    def put(self, experiment, run):
+        if self.queue.empty():
+            self.queue.put((experiment, run))
+
+    def stop(self):
+        self.t.stop()
+        
 
 _recorder = Recorder()
 
@@ -318,7 +368,7 @@ def save(verbose=False):
     '''
     Save the current state.
     '''
-    _recorder.save(verbose=True)
+    _recorder.save(verbose=verbose)
         
 def record(wrapped):
     '''
