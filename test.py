@@ -1,55 +1,43 @@
 import math
 import blackbox
 
+@blackbox.record
+def newton(x):
+    '''
+    Compute the square root of x.
+    '''
+    xi = 1
+    true_root = math.sqrt(x)
+    for i in range(0,10):
+        xi = .5*(xi+x/xi)
+        blackbox.log('iter', i)
+        blackbox.log('xi', xi)
+        error(xi, true_root)
+        blackbox.save(verbose=True)
+    return xi
+
+def error(x,y):
+    '''
+    compute the error
+    '''
+    err = abs(x-y)
+    blackbox.log('error', err)
+    return err
+
 blackbox.set_experiment('SquareRoot')
-blackbox.takeoff(name='Newton method', description='sample run')
-print "hello world"
-blackbox.log('a', 1)
-blackbox.bank()
-#routine(3)
 
-#blackbox.land()
-
-# @record
-# def newton(x):
-#     '''
-#     Compute the square root of x.
-#     '''
-#     xi = 1
-#     true_root = math.sqrt(x)
-#     for i in range(0,10):
-#         xi = .5*(xi+x/xi)
-#         host.log('iter', i)
-#         host.log('xi', xi)
-#         error(xi, true_root)
-#         if i==1:
-#             host.descend()
-#             host.log('whats for lunch?','potatoes and toast')
-#             dinner()
-#             host.ascend()
-#         if i==2:
-#             dinner()
-        
-
-#         host.register()
-
-# def error(x,y):
-#     '''
-#     compute the error
-#     '''
-#     err = math.abs(x-y)
-#     log('error', err)
-#     return err
+for i in range(10):
+    blackbox.takeoff(name='Newton method %i'%(i), description='sample run for %i'%(i), force=True)
+    newton(i)
+    blackbox.land()
 
 
-
-# @record
-# def dinner():
-#     log('whats for dinner?', 'durians and mangoes')
-    
-
-# @record
-# def dessert():
-#     log('whats for dessert', 'turnips')
+exp = blackbox.get_experiment('SquareRoot')
+print exp.list_runs()
+run = exp.get_run('Newton method 1')
+print run.events
+'''
+As of right now, its not clear how this would handle multiple threads. It's also not clear what should be locked to handle multithreading effectively.
 
 
+'''

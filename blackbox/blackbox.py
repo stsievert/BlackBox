@@ -7,6 +7,15 @@ record -
 context - 
 overhead - 
 
+Sunday todo:
+DONE 1. prevent the overwrite of a run - unless you force it
+DONE 2. fix the decorator
+DONE 3. test access methods
+4. try to generate basic docs, update readme.md
+5. thread safety - lets think about what needs to be made thread safe
+6. asynchronous writes through the serializer
+7. clearing and setting of overheads
+DONE 8. set end_time in land
 '''
 
 import sys, inspect, os, time, uuid, shelve, traceback
@@ -15,7 +24,7 @@ class Recorder():
     '''
     Blackbox Recorder.  
 
-    HMM - this is highly stateful - might make more sense to have multiple recorders?
+    Internal class for keeping state (i.e. current experiment and run)
     '''
     def __init__(self):
         '''
@@ -25,27 +34,25 @@ class Recorder():
         self.run = None
         self.current_state = {}
         self.context = {}
-        self.serializer = ShelfSerializer()
-        self.flying = False
+        self.serializer = ShelveSerializer()
+        
 
     def set_experiment(self, name):
         '''
         Set the current experiment from the serializer
         '''
-
         if self.experiment:
-            raise Exception('Experiment %s already initialized!'%(self.experiment.name))   
-        self.experiment = self.serializer.get_experiment(name)
+            raise Exception('Experiment %s already initialized! Experiment %s not created!'%(self.experiment.name, name))   
+        self.experiment = self.serializer.get_experiment(name, create_not_exists=True)
 
     def get_experiment(self, name):
         '''
         Get an experiment from the serializer.
         TODO - current behavior is to create the experiment if it doesn't exist. I don't think that's what we want
-
         '''
-        return self.serializer.get_experiment(name)
+        return self.serializer.get_experiment(name, create_not_exists=False)
     
-    def create_run(self, name=None, description=None):
+    def create_run(self, name=None, description=None, force=False):
         '''
         Create a new run.
         
@@ -53,12 +60,15 @@ class Recorder():
         '''
         if self.run:
             raise Exception('Flight in progress! Please land first!')
-
+        # TODO: Great example of how this is not thread safe! What happens if a thread creates this run in the meantime!
+        # This run would overwrite it.   
         if name is None:
             name = uuid.uuid()
+        elif not force and name in self.experiment.list_runs():
+            raise Exception('Run %s already exists in this experiment'%(name))
         self.run = Run(name, description)
-        self.flying = True
-        
+        self.serializer.save_run(self.experiment, self.run)
+    
         
     def stop_run(self):
         '''
@@ -68,6 +78,8 @@ class Recorder():
         if self.run is None:
             raise Exception('No flight to stop!')
         self.run.end_time = time.time()
+        self.current_state = {}
+        self.context = {}
         self.flying = False
         self.run = None
         
@@ -83,9 +95,9 @@ class Recorder():
         '''
         context[key] = name
         
-    def bank(self, level = 1):
+    def save(self, level = 2, verbose = False):
         '''
-        Bank the current state. This by default adds the current line number, file and function name.
+        Save the current state. This by default adds the current line number, file and function name.
         Updates the experiment object as well with this run.
         TODO: make this update async - currently it is on the main calling thread
         '''
@@ -98,16 +110,22 @@ class Recorder():
         
         self.run.add_state(self.current_state)
         # reset the current_state and the context
-        
+        if verbose:
+            l = ["{}: {}".format(key,item) for key,item in self.current_state.iteritems()]
+            l = "State Saved: {}".format(' '.join(l))
+            print l
+            
         self.context = {}
         self.current_state = {}
         # Is this the right way to do this?
         # Do I even need an experiment object floating around?
-        self.serializer.update_run(self.experiment, self.run)
+        self.serializer.save_run(self.experiment, self.run)
         
 class Serializer():
     '''
     Base class for a serializer. Serializer's are required to implement methods for getting experiments, getting runs, and updating experiments.
+    
+    TODO: Decide exactly what the interface on this should be. It's unclear at this point. For example, is list_runs too specific?
     '''
     def __init__(self):
         pass
@@ -120,27 +138,37 @@ class Serializer():
         raise NotImplementedError('get_run must be implemented '
                                   'by Serializer subclasses')
     
-    def update_run(self, experiment, run):
+    def save_run(self, experiment, run):
         '''
         Update the run in the specific experiment.
         '''
         raise NotImplementedError('update must be implemented '
                                   'by Serializer subclasses')
 
+    def list_runs(self, experiment):
+        '''
+        List of runs for this experiment
+        '''
+        raise NotImplementedError('update must be implemented '
+                                  'by Serializer subclasses')
+
     
-class ShelfSerializer(Serializer):
+class ShelveSerializer(Serializer):
     def __init__(self, directory='.experiments'):
         self.directory = os.path.abspath(directory)
             
-    def get_experiment(self, name, description = None):
+    def get_experiment(self, name, description = None, create_not_exists=False):
+        '''
+        Shelve implementation of get_experiment. The experiment is stored in a shelve in the .experiments directory.
+        '''
         # See this post: http://stackoverflow.com/questions/273192/how-to-check-if-a-directory-exists-and-create-it-if-necessary
         # check for experiment in directory
-        if os.path.exists(os.path.join(self.directory, name)) :
-            exp_shelf = shelve.open(experiment)
+        if os.path.exists(os.path.join(self.directory, name+'.db')) :
+            exp_shelf = shelve.open(os.path.join(self.directory, name+'.db'))
             meta = exp_shelf['meta']
             experiment = Experiment(name, meta['description'],meta['start_time'])
             exp_shelf.close()
-        else:
+        elif create_not_exists:
             # if it doesn't exist create this object, shelve it, and return
             if not os.path.isdir(self.directory):
                 try:
@@ -153,20 +181,28 @@ class ShelfSerializer(Serializer):
             exp_shelf['meta'] = {'name':name, 'description': description, 'start_time':start_time}
             exp_shelf.close()
             experiment = Experiment(name, description, start_time)
+        else:
+            raise Exception('Experiment %s does not exist'%(name))
         return experiment
 
     def get_run(self, experiment, name):
+        '''
+        Get a run from a specific experiment.
+        '''
         try:
             exp = shelve.open(os.path.join(self.directory, experiment.name))
             run = exp[name]
             exp.close()
+            return run
         except:
+            print traceback.print_exc()
             exp.close()
             Exception('Run does not exist in this experiment')
-        exp.close()
         
-    def update_run(self, experiment, run):
-        print "updating run"
+    def save_run(self, experiment, run):
+        '''
+        Save a run from a specific experiment.
+        '''
         try:
             exp = shelve.open(os.path.join(self.directory, experiment.name))
             exp[run.name] = run
@@ -175,7 +211,20 @@ class ShelfSerializer(Serializer):
             print traceback.print_exc()
             Exception('Error updating run!')
 
-            
+    def list_runs(self, experiment):
+        '''
+        Get a list of the runs belonging to this experiment
+        '''
+        try:
+            exp = shelve.open(os.path.join(self.directory, experiment.name))
+            run_names = exp.keys()
+            exp.close()
+        except Exception,e:
+            print traceback.print_exc()
+            Exception('Error updating run!')
+        run_names.remove('meta')
+        return run_names
+    
 class Experiment():
     '''
     Main experiment class.
@@ -189,20 +238,23 @@ class Experiment():
         self.name = name
         self.description = description
         self.start_time = time.time()
-        self.serializer = ShelfSerializer()
+        self.serializer = ShelveSerializer()
         self.runs = {}
         
     def get_run(self, name):
         '''
         Get a run.
         '''
-        if name in runs.keys():
-            return runs[name]
+        if name in self.runs.keys():
+            return self.runs[name]
         else:
-            run = serializer.get_run(self, name)
+            run = self.serializer.get_run(self, name)
             self.runs[name] = run            
         return run 
 
+    def list_runs(self):
+        return self.serializer.list_runs(self)
+        
 class Run():
     '''
     Main run class.
@@ -238,12 +290,11 @@ def get_experiment(name):
     '''
     return _recorder.get_experiment(name)
 
-def takeoff(name=None, description=None):
+def takeoff(name=None, description=None, force=False):
     '''
     Begin recording a run.
     '''
-    # TODO: what happens is there is a run currently?
-    return _recorder.create_run(name, description)
+    return _recorder.create_run(name, description, force)
 
 def land():
     '''
@@ -251,7 +302,6 @@ def land():
     '''
     _recorder.stop_run()
 
-#TODO: it is not clear why status is being exposed, or why it even exists.
 def log(key, value):
     '''
     Log a key value pair into the state.
@@ -264,11 +314,11 @@ def overhead(key, value):
     '''
     _recorder.update_context(key, value)
 
-def bank():
+def save(verbose=False):
     '''
-    Bank the current state.
+    Save the current state.
     '''
-    _recorder.bank()
+    _recorder.save(verbose=True)
         
 def record(wrapped):
     '''
@@ -276,16 +326,17 @@ def record(wrapped):
     Note - this will get added to the run after the function is returned.
     '''
     def inner(*args, **kwargs):
-        # This function call was made from one level up - so that's the level we bank
-        _recorder.bank(level=2) 
+        # This function call was made from one level up - so that's the level we save
+        _recorder.save(level=2)
+        t = time.time()
+        result = wrapped(*args,**kwargs)
+        print 'in inner', wrapped.__name__
         _recorder.log('function_call',wrapped.__name__)
         _recorder.log('timestamp', time.time())
         _recorder.log('input', args)
-        t = time.time()
-        result = wrapped(*args,**kwargs)
+        _recorder.log('duration', time.time()-t)
         _recorder.log('result', result)
-        _recorder.log('duration', time.time())
-        _recorder.bank(level = 2)
+        _recorder.save(level = 2,verbose=True)
         return result
     return inner
 
