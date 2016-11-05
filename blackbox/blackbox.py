@@ -21,6 +21,12 @@ HARD - 5. thread safety - lets think about what needs to be made thread safe
 6. asynchronous writes through the serializer - kind of done - currently requires a forced 'backup' 
 7. clearing and setting of overheads
 DONE 8. set end_time in land
+
+Scott's comments:
+- Why did you have to make a new experiment?
+
+
+
 '''
 
 import sys, inspect, os, time, uuid, shelve, traceback, threading
@@ -37,12 +43,14 @@ class Recorder():
         '''
         self.experiment = None
         self.run = None
-        self.Manager = Manager()
-        self.current_state = {}#Manager.dict()
-        self.context = {}#Manager.dict()
+        self.current_state = {}
+        self.context = {}
         self.serializer = ShelveSerializer()
-        self.listener = AsyncListener(self.serializer)
         self.parallel_write = True
+        if self.parallel_write:
+            self.listener = AsyncListener(self.serializer)
+            self.listener.start()
+
         
     def set_experiment(self, name):
         '''
@@ -74,9 +82,7 @@ class Recorder():
         elif not force and name in self.experiment.list_runs():
             raise Exception('Run %s already exists in this experiment'%(name))
         self.run = Run(name, description)
-        self.serializer.save_run(self.experiment, self.run)
-        if self.parallel_write:
-            self.listener.start()
+        #self.save(backup=True)
         
     def stop_run(self):
         '''
@@ -111,7 +117,7 @@ class Recorder():
         Updates the experiment object as well with this run.
         TODO: make this update async - currently it is on the main calling thread
         '''
-        #Get the current stack and pull necessary info from the calling functions
+        #TODO: Get the current stack and pull necessary info from the calling functions
         # uncomment this to get stack frame info - it is extremely slow so it is toggled off
         # frame = inspect.stack()[level]
         # self.context.update({'module':frame[1],
@@ -123,9 +129,9 @@ class Recorder():
             l = ["{}: {}".format(key,item) for key,item in self.current_state.iteritems()]
             l = "State Saved: {}".format(' '.join(l))
             print l
-        # reset the current_state and the context
         self.context = {}
         self.current_state = {}
+        # reset the current_state and the context
         if backup==True:
             if self.parallel_write:
                 self.listener.put(self.experiment, self.run)
@@ -143,7 +149,12 @@ class Serializer():
         pass
 
     
-    def get_experiment(self, name):
+    def get_experiment(self, name, description=None, create_not_exists=False):
+        '''
+        Get an experiment by name.
+
+        If 'create_not_exists' is True and the experiment does not exist, it is created.
+        '''
         raise NotImplementedError('get_experiment must be implemented '
                                   'by Serializer subclasses')
 
@@ -177,7 +188,7 @@ class ShelveSerializer(Serializer):
         # See this post: http://stackoverflow.com/questions/273192/how-to-check-if-a-directory-exists-and-create-it-if-necessary
         # check for experiment in directory
         if os.path.exists(os.path.join(self.directory, name+'.db')) :
-            exp_shelf = shelve.open(os.path.join(self.directory, name+'.db'))
+            exp_shelf = shelve.open(os.path.join(self.directory, name))
             meta = exp_shelf['meta']
             experiment = Experiment(name, meta['description'],meta['start_time'])
             exp_shelf.close()
@@ -187,6 +198,7 @@ class ShelveSerializer(Serializer):
                 try:
                     os.makedirs(self.directory)
                 except OSError:
+                    # failed to makedir, let's check if it's a file
                     if not os.path.isdir(path):
                         raise Exception('%s already exists as path. Please use a different directory name'%(self.directory))
             exp_shelf = shelve.open(os.path.join(self.directory,name))
@@ -218,6 +230,7 @@ class ShelveSerializer(Serializer):
         '''
         try:
             exp = shelve.open(os.path.join(self.directory, experiment.name))
+            print 'save_run', run.name, type(run.name), exp.keys(), experiment.name
             exp[run.name] = run
             exp.close()
         except Exception,e:
@@ -298,6 +311,7 @@ class AsyncListener():
     for a similar implemenation in logging.
     '''
     def __init__(self, serializer):
+        print 'creating thread'
         self.queue = Queue()
         self.serializer = serializer
         self.t = threading.Thread(target=self.process)
@@ -317,10 +331,10 @@ class AsyncListener():
                 break
             except:
                 raise
-
+            
     def put(self, experiment, run):
-        if self.queue.empty():
-            self.queue.put((experiment, run))
+        print 'queue', id(self.queue), 'listener', id(self), 'recorder',id(_recorder)
+        self.queue.put((experiment, run))
 
     def stop(self):
         self.t.stop()
@@ -364,11 +378,11 @@ def overhead(key, value):
     '''
     _recorder.update_context(key, value)
 
-def save(verbose=False):
+def save(verbose=False, backup=False):
     '''
     Save the current state.
     '''
-    _recorder.save(verbose=verbose)
+    _recorder.save(verbose=verbose, backup=backup)
         
 def record(wrapped):
     '''
@@ -377,7 +391,7 @@ def record(wrapped):
     '''
     def inner(*args, **kwargs):
         # This function call was made from one level up - so that's the level we save
-        _recorder.save(level=2)
+        _recorder.save(level=2, backup=False)
         t = time.time()
         result = wrapped(*args,**kwargs)
         print 'in inner', wrapped.__name__
@@ -386,7 +400,7 @@ def record(wrapped):
         _recorder.log('input', args)
         _recorder.log('duration', time.time()-t)
         _recorder.log('result', result)
-        _recorder.save(level = 2,verbose=True)
+        _recorder.save(level = 2)
         return result
     return inner
 
