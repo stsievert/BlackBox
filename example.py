@@ -9,7 +9,7 @@ def newton(x):
     '''
     xi = 1
     true_root = math.sqrt(x)
-    for i in range(0,10):
+    for i in range(0,500):
         xi = .5*(xi+x/xi)
         blackbox.log('iter', i)
         blackbox.log('xi', xi)

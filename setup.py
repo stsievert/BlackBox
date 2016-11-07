@@ -1,10 +1,10 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(name='blackbox',
-      version='0.1.0',
+      version='0.1.1',
       description='A flight recorder for scientific experiments.',
       url='http://github.com/lalitkumarj/blackbox',
       author='Lalit Jain and Scott Sievert',
       author_email='lalitkumarj@gmail.com',
-      packages=['blackbox'])
+      packages=find_packages())
       
