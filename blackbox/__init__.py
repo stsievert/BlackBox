@@ -21,10 +21,7 @@ Scott's comments:
 - Why did you have to make a new experiment?
 '''
 
-import sys, inspect, os, time, uuid, shelve, traceback, threading
-from multiprocessing import Manager, Queue
-
-_queue = Queue()
+import sys, inspect, os, time, uuid, traceback
 class Recorder():
     '''
     Blackbox Recorder.  
@@ -40,7 +37,7 @@ class Recorder():
         self.current_state = {}
         self.context = {}
         if serializer is None:
-            self.serializer = ShelveSerializer(queue=_queue)
+            self.serializer = ShelveSerializer()
         
         
     def set_experiment(self, name):
@@ -81,7 +78,7 @@ class Recorder():
         
         if self.run is None:
             raise Exception('No flight to stop!')
-        self.save()
+        self.close()
         self.run.end_time = time.time()
         self.current_state = {}
         self.context = {}
@@ -124,6 +121,7 @@ class Recorder():
         self.current_state = {}
         self.serializer.save_run(self.experiment, self.run)
 
+        
 class Experiment():
     '''
     Main experiment class.
@@ -137,22 +135,16 @@ class Experiment():
         self.name = name
         self.description = description
         self.start_time = time.time()
-        self.serializer = ShelveSerializer()
         self.runs = {}
         
     def get_run(self, name):
         '''
         Get a run.
         '''
-        if name in self.runs.keys():
+        try:
             return self.runs[name]
-        else:
-            run = self.serializer.get_run(self, name)
-            self.runs[name] = run            
-        return run 
-
-    def list_runs(self):
-        return self.serializer.list_runs(self)
+        except:
+            Exception('{} is not a run in this experiment!'.format(name))
         
 class Run():
     '''
@@ -174,8 +166,11 @@ class Run():
         '''
         state.update({'timestamp': time.time()})
         self.events.append(state)
-                
-        
+
+    def dataframe(self):
+        pass
+
+
 class Serializer():
     '''
     Base class for a serializer. Serializer's are required to implement methods for getting experiments, getting runs, and updating experiments.
@@ -186,18 +181,19 @@ class Serializer():
         pass
 
     
-    def get_experiment(self, name, description=None, create_not_exists=False):
+    def open(self, experiment, description=None, create_not_exists=False):
         '''
-        Get an experiment by name.
+        Open an experiment.
 
         If 'create_not_exists' is True and the experiment does not exist, it is created.
         '''
         raise NotImplementedError('get_experiment must be implemented '
                                   'by Serializer subclasses')
 
-    def get_run(self, experiment, name):
+    def get_run(self, experiment, run):
         raise NotImplementedError('get_run must be implemented '
                                   'by Serializer subclasses')
+    
     
     def save_run(self, experiment, run):
         '''
@@ -206,6 +202,13 @@ class Serializer():
         raise NotImplementedError('update must be implemented '
                                   'by Serializer subclasses')
 
+    def close_run(self, experiment, run):
+        '''
+        Close the run. Extremely important to do to guarantee that all run events are saved.
+        '''
+        raise NotImplementedError('close must be implemented '
+                                  'by Serializer subclasses')
+    
     def list_runs(self, experiment):
         '''
         List of runs for this experiment
@@ -213,138 +216,9 @@ class Serializer():
         raise NotImplementedError('update must be implemented '
                                   'by Serializer subclasses')
 
-
-class AsyncListener():
-    '''
-    Fairly general purpose asynchronous daemon.
-    See: http://stackoverflow.com/questions/641420/how-should-i-log-while-using-multiprocessing-in-python/894284#894284
-
-    for a similar implemenation in logging.
-    '''
-    def __init__(self, serializer, queue):
-        print 'creating thread'
-        self.queue = queue
-        self.serializer = serializer
-        self.t = threading.Thread(target=self.process)
-        self.t.daemon = True
-        self.count = 0
-
-    def start(self):
-        self.t.start()
-        
-    def process(self):
-        while True:
-            try:
-                s = self.queue.get()
-                experiment, run = s#self.queue.get() 
-                self.serializer.save_run(experiment, run)
-            except EOFError:
-                break
-            except:
-                raise
-            
-    def put(self, experiment, run):
-        if self.queue.empty():
-            self.queue.put((experiment, run))
-
-    def stop(self):
-        self.t.stop()
-
     
     
-class ShelveSerializer(Serializer):
-    def __init__(self, directory='.experiments', queue=None):
-        self.directory = os.path.abspath(directory)
-        if not queue is None:
-            self.parallel_write = True
-            self.queue = _queue
-            self.listener = AsyncListener(self, queue = self.queue)
-            self.listener.start()
-
-            
-    def get_experiment(self, name, description = None, create_not_exists=False):
-        '''
-        Shelve implementation of get_experiment. The experiment is stored in a shelve in the .experiments directory.
-        '''
-        # See this post: http://stackoverflow.com/questions/273192/how-to-check-if-a-directory-exists-and-create-it-if-necessary
-        # check for experiment in directory
-        if os.path.exists(os.path.join(self.directory, name+'.db')) :
-            exp_shelf = shelve.open(os.path.join(self.directory, name))
-            meta = exp_shelf['meta']
-            experiment = Experiment(name, meta['description'],meta['start_time'])
-            exp_shelf.close()
-        elif create_not_exists:
-            # if it doesn't exist create this object, shelve it, and return
-            if not os.path.isdir(self.directory):
-                try:
-                    os.makedirs(self.directory)
-                except OSError:
-                    # failed to makedir, let's check if it's a file
-                    if not os.path.isdir(path):
-                        raise Exception('%s already exists as path. Please use a different directory name'%(self.directory))
-            exp_shelf = shelve.open(os.path.join(self.directory,name))
-            start_time = time.time()
-            exp_shelf['meta'] = {'name':name, 'description': description, 'start_time':start_time}
-            exp_shelf.close()
-            experiment = Experiment(name, description, start_time)
-        else:
-            raise Exception('Experiment %s does not exist'%(name))
-        return experiment
-
-    def get_run(self, experiment, name):
-        '''
-        Get a run from a specific experiment.
-        '''
-        try:
-            exp = shelve.open(os.path.join(self.directory, experiment.name))
-            run = exp[name]
-            exp.close()
-            return run
-        except:
-            print traceback.print_exc()
-            exp.close()
-            Exception('Run does not exist in this experiment')
-        
-    def save_run(self, experiment, run):
-        '''
-        Save a run from a specific experiment.
-        '''
-        if self.parallel_write:
-            self.listener.put(experiment, run)
-        else:
-            self._save(experiment, run)
-
-        # So, look at the time we record the last piece of info. Any item in the queue whose time is before this time is invalidated!
-        # I think the async listener can't be a separate class. It needs info in the serializer!
-            
-    def _save(self, experiment, run):
-        try:
-            exp = shelve.open(os.path.join(self.directory, experiment.name))
-            print 'save_run', run.name, type(run.name), exp.keys(), experiment.name
-            exp[run.name] = run
-            exp.sync()
-        except Exception,e:
-            print traceback.print_exc()
-            Exception('Error updating run!')
-
-            
-    def list_runs(self, experiment):
-        '''
-        Get a list of the runs belonging to this experiment
-        '''
-        try:
-            exp = shelve.open(os.path.join(self.directory, experiment.name))
-            run_names = exp.keys()
-            exp.close()
-        except Exception,e:
-            print traceback.print_exc()
-            Exception('Error updating run!')
-        run_names.remove('meta')
-        return run_names
-    
-
 _recorder = Recorder()
-
 def set_experiment(name):
     '''
     Set the current experiment to record to.
@@ -385,6 +259,7 @@ def save(verbose=False):
     '''
     Save the current state.
     '''
+    #print "blackbox pid",os.getpid()
     _recorder.save(verbose=verbose)
         
 def record(wrapped):
@@ -397,7 +272,7 @@ def record(wrapped):
         _recorder.save(level=2)
         t = time.time()
         result = wrapped(*args,**kwargs)
-        print 'in inner', wrapped.__name__
+        #print 'in inner', wrapped.__name__
         _recorder.log('function_call',wrapped.__name__)
         _recorder.log('timestamp', time.time())
         _recorder.log('input', args)
