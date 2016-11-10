@@ -22,13 +22,16 @@ Scott's comments:
 '''
 
 import sys, inspect, os, time, uuid, traceback
+from ShelveSerializer import ShelveSerializer
+from .types import Experiment, Run, Serializer
+
 class Recorder():
     '''
     Blackbox Recorder.  
 
     Internal class for keeping state (i.e. current experiment and run)
     '''
-    def __init__(self, serializer=None):
+    def __init__(self, serializer_type=None):
         '''
         Initialize an empty recorder.
         '''
@@ -36,9 +39,8 @@ class Recorder():
         self.run = None
         self.current_state = {}
         self.context = {}
-        if serializer is None:
-            self.serializer = ShelveSerializer()
-        
+        if serializer_type is None:
+            self.serializer_type = ShelveSerializer
         
     def set_experiment(self, name):
         '''
@@ -46,6 +48,7 @@ class Recorder():
         '''
         if self.experiment:
             raise Exception('Experiment %s already initialized! Experiment %s not created!'%(self.experiment.name, name))   
+        self.serializer = self.serializer_type()
         self.experiment = self.serializer.get_experiment(name, create_not_exists=True)
 
     def get_experiment(self, name):
@@ -75,16 +78,16 @@ class Recorder():
         '''
         Stop a run.
         '''
-        
+        #print "STOPPING RUN", self.run.name
         if self.run is None:
             raise Exception('No flight to stop!')
-        self.close()
         self.run.end_time = time.time()
+        self.serializer.stop_run(self.run)
         self.current_state = {}
         self.context = {}
         self.flying = False
         self.run = None
-        
+  
     def log(self, key, item):
         '''
         Log a key to the current state.
@@ -115,106 +118,13 @@ class Recorder():
         if verbose:
             l = ["{}: {}".format(key,item) for key,item in self.current_state.iteritems()]
             l = "State Saved: {}".format(' '.join(l))
-            print l
+            print l, os.getpid()
         # reset the current_state and the context
         self.context = {}
         self.current_state = {}
-        self.serializer.save_run(self.experiment, self.run)
+        self.serializer.save_run(self.run)
 
         
-class Experiment():
-    '''
-    Main experiment class.
-    
-    Used for accessing information about an experiment.
-    '''
-    def __init__(self, name, description, start_time):
-        '''
-        Initialize a new experiment object. 
-        '''
-        self.name = name
-        self.description = description
-        self.start_time = time.time()
-        self.runs = {}
-        
-    def get_run(self, name):
-        '''
-        Get a run.
-        '''
-        try:
-            return self.runs[name]
-        except:
-            Exception('{} is not a run in this experiment!'.format(name))
-        
-class Run():
-    '''
-    Main run class.
-    '''
-    def __init__(self, name, description):
-        '''
-        Initialize a new Run object. 
-        '''
-        self.name = name
-        self.description = description
-        self.start_time = time.time()
-        self.end_time = None
-        self.events = []
-
-    def add_state(self, state):
-        '''
-        Add a state to the current set of states. 
-        '''
-        state.update({'timestamp': time.time()})
-        self.events.append(state)
-
-    def dataframe(self):
-        pass
-
-
-class Serializer():
-    '''
-    Base class for a serializer. Serializer's are required to implement methods for getting experiments, getting runs, and updating experiments.
-    
-    TODO: Decide exactly what the interface on this should be. It's unclear at this point. For example, is list_runs too specific?
-    '''
-    def __init__(self):
-        pass
-
-    
-    def open(self, experiment, description=None, create_not_exists=False):
-        '''
-        Open an experiment.
-
-        If 'create_not_exists' is True and the experiment does not exist, it is created.
-        '''
-        raise NotImplementedError('get_experiment must be implemented '
-                                  'by Serializer subclasses')
-
-    def get_run(self, experiment, run):
-        raise NotImplementedError('get_run must be implemented '
-                                  'by Serializer subclasses')
-    
-    
-    def save_run(self, experiment, run):
-        '''
-        Update the run in the specific experiment.
-        '''
-        raise NotImplementedError('update must be implemented '
-                                  'by Serializer subclasses')
-
-    def close_run(self, experiment, run):
-        '''
-        Close the run. Extremely important to do to guarantee that all run events are saved.
-        '''
-        raise NotImplementedError('close must be implemented '
-                                  'by Serializer subclasses')
-    
-    def list_runs(self, experiment):
-        '''
-        List of runs for this experiment
-        '''
-        raise NotImplementedError('update must be implemented '
-                                  'by Serializer subclasses')
 
     
     
