@@ -9,7 +9,7 @@ def newton(x):
     '''
     xi = 1
     true_root = math.sqrt(x)
-    for i in range(0,10000):
+    for i in range(0,50000):
         xi = .5*(xi+x/xi)
         blackbox.log('iter', i)
         blackbox.log('xi', xi)
@@ -39,9 +39,9 @@ pool.join()
 print result
 
 
-exp = blackbox.get_experiment('SquareRootParallel')
-for run in exp.runs:
-    run = exp.get_run(run)
-    print len(run.events)
+# exp = blackbox.get_experiment('SquareRootParallel')
+# for run in exp.runs:
+#     run = exp.get_run(run)
+#     print len(run.events)
 
 

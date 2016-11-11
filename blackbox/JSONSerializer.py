@@ -1,61 +1,52 @@
-import sys, inspect, os, time, uuid, shelve, traceback, threading
+import sys, inspect, os, time, uuid, traceback, threading, shelve, mmap, random, string
+import ujson as json
 from multiprocessing import Manager, Queue, RLock
 from .types import Experiment, Run, Serializer
-_queue = Queue()
+# _queue = Queue()
 
-class AsyncListener():
-    '''
-    Fairly general purpose asynchronous daemon.
-    See: http://stackoverflow.com/questions/641420/how-should-i-log-while-using-multiprocessing-in-python/894284#894284
+# class AsyncListener():
+#     '''
+#     Fairly general purpose asynchronous daemon.
+#     See: http://stackoverflow.com/questions/641420/how-should-i-log-while-using-multiprocessing-in-python/894284#894284
 
-    for a similar implemenation in logging.
-    '''
-    def __init__(self):
-        self.t = threading.Thread(target=self.process)
-        self.t.daemon = True
+#     for a similar implemenation in logging.
+#     '''
+#     def __init__(self):
+#         self.t = threading.Thread(target=self.process)
+#         self.t.daemon = True
         
-    def start(self):
-        self.t.start()
+#     def start(self):
+#         self.t.start()
         
-    def process(self):
-        timestamps = {}
-        closed = 0
-        exp = None
-        while True:
-            try:
-                s = _queue.get()
-                directory, experiment, run, timestamp, close = s                
-                if not experiment is None and exp is None:
-                    exp = shelve.open(os.path.join(directory, experiment.name))
-
-                if not run.name in timestamps.keys():
-                    closed+=1
-                    
-                if not run.name in timestamps.keys() or timestamp > timestamps[run.name]:
-                    exp[run.name] = run.events
-                    timestamps[run.name] = time.time()
-
-                if close:
-                    closed -=1
-                    if closed == 0:
-                        exp.close()
-                        exp=None
-            except:
-                print 'excepted!'
-                raise
+#     def process(self):
+#         writers = {}
+#         while True:
+#             try:
+#                 directory, experiment, run, event, close = _queue.get()
+#                 if close:
+#                     writers[run].close()                    
+#                 else:
+#                     if not run in writers.keys():
+#                         print 'adding run', run
+#                         writers[run] = open(os.path.join(directory, '{}_{}.json'.format(experiment, run)), 'wa')
+#                     fp = writers[run]
+#                     fp.write(event)
+#             except:
+#                 print 'excepted!'
+#                 raise
             
-    def put(self, directory, experiment, run, timestamp, close):
-        _queue.put((directory, experiment, run, timestamp, close))
+#     def put(self, directory, experiment, run, timestamp, close):
+#         _queue.put((directory, experiment, run, timestamp, close))
 
-_listener = AsyncListener()
-_listener.start()
+# _listener = AsyncListener()
+# _listener.start()
         
-class ShelveSerializer():
+class JSONSerializer():
     def __init__(self, directory='.experiments', backup=False):
         self.directory = os.path.abspath(directory)
         self.experiment = False
-        self.backup = False
-        
+        self.fp = None
+
     def get_experiment(self, name, description = None, create_not_exists=False):
         '''
         Shelve implementation of get_experiment. The experiment is stored in a shelve in the .experiments directory.
@@ -104,12 +95,15 @@ class ShelveSerializer():
         '''
         Save a run from a specific experiment.
         '''
-        if self.backup:
-            _listener.put(self.directory, self.experiment, run, time.time(), False)
+        if self.fp is None:
+            self.fp = open(os.path.join(self.directory,'{}_{}'.format(self.experiment.name, run.name)),'wb', 4096)
+        #_listener.put(self.directory, self.experiment.name, run.name, json.dumps(run.events[-1]), False)
+        self.fp.write(json.dumps(run.events[-1])+'\n')
 
     def stop_run(self, run):
-        _listener.put(self.directory, self.experiment, run, time.time(), True)
-
+        self.fp.close()
+        #_listener.put(self.directory, self.experiment.name, run.name, json.dumps(run.events[-1]), True)
+        
     def list_runs(self, experiment):
         '''
         Get a list of the runs belonging to this experiment
@@ -125,8 +119,6 @@ class ShelveSerializer():
         return run_names
 
         
-    
-
 
 # So, look at the time we record the last piece of info. Any item in the queue whose time is before this time is invalidated!
 # I think the async listener can't be a separate class. It needs info in the serializer!

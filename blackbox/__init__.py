@@ -23,6 +23,7 @@ Scott's comments:
 
 import sys, inspect, os, time, uuid, traceback
 from ShelveSerializer import ShelveSerializer
+from JSONSerializer import JSONSerializer
 from .types import Experiment, Run, Serializer
 
 class Recorder():
@@ -40,7 +41,7 @@ class Recorder():
         self.current_state = {}
         self.context = {}
         if serializer_type is None:
-            self.serializer_type = ShelveSerializer
+            self.serializer_type = JSONSerializer
         
     def set_experiment(self, name):
         '''
