@@ -13,17 +13,17 @@ class Experiment():
         self.name = name
         self.description = description
         self.start_time = time.time()
-        self.runs = {}
+        self.serializer = None
         
     def get_run(self, name):
         '''
         Get a run.
         '''
-        try:
-            return self.runs[name]
-        except:
-            Exception('{} is not a run in this experiment!'.format(name))
+        return self.serializer.get_run(self, name)
         
+    def list_runs(self):
+        return self.serializer.list_runs(self)
+            
 class Run():
     '''
     Main run class.
@@ -52,8 +52,6 @@ class Run():
 class Serializer():
     '''
     Base class for a serializer. Serializer's are required to implement methods for getting experiments, getting runs, and updating experiments.
-    
-    TODO: Decide exactly what the interface on this should be. It's unclear at this point. For example, is list_runs too specific?
     '''
     def __init__(self):
         pass
@@ -68,19 +66,19 @@ class Serializer():
         raise NotImplementedError('get_experiment must be implemented '
                                   'by Serializer subclasses')
 
-    def get_run(self, run):
+    def get_run(self, experiment, run):
         raise NotImplementedError('get_run must be implemented '
                                   'by Serializer subclasses')
     
     
-    def save_run(self, run):
+    def save_run(self, experiment, run):
         '''
         Update the run in the specific experiment.
         '''
         raise NotImplementedError('update must be implemented '
                                   'by Serializer subclasses')
 
-    def stop_run(self, run):
+    def stop_run(self, experiment, run):
         '''
         Close the run. Extremely important to do to guarantee that all run events are saved.
         '''

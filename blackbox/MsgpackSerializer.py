@@ -1,11 +1,11 @@
-import sys, inspect, os, time,  traceback, random, string, shelve
+import sys, inspect, os, time,  traceback, random, string
+import msgpack
 import ujson as json
 from .types import Experiment, Run, Serializer
         
-class JSONSerializer():
+class MsgpackSerializer():
     def __init__(self, directory='.experiments', backup=False):
         self.directory = os.path.abspath(directory)
-        self.experiment = False
         self.fp = None
         self.event_buffer = []
 
@@ -16,7 +16,6 @@ class JSONSerializer():
         # See this post: http://stackoverflow.com/questions/273192/how-to-check-if-a-directory-exists-and-create-it-if-necessary
         dir_path = os.path.join(self.directory, name)
         if not os.path.exists(os.path.join(dir_path, 'info.json')):
-            print "doesnt exist"
             # If experiment directory does not exist
             if create_not_exists:
                 if not os.path.isdir(dir_path):
@@ -38,48 +37,52 @@ class JSONSerializer():
             with open(os.path.join(dir_path,'info.json'),'r') as fp:
                 info = json.load(fp)
                 experiment = Experiment(info['name'], info['description'], info['start_time'])
-        self.experiment = experiment
         return experiment
 
-    def get_run(self, name):
+    def get_run(self, experiment, name):
         '''
         Get a run from a specific experiment.
         '''
         try:
-            pass
+            with open(os.path.join(self.directory, experiment.name, name+'.msg')) as fp:
+                unpacker = msgpack.Unpacker(fp, use_list=True)
+                events = [o for o in unpacker]
+                info = events.pop()
+                run = Run(info['name'], info['description'])
+                run.start_time = info['start_time']
+                run.end_time = info['end_time']
+                run.events = events
         except:
             print traceback.print_exc()
             exp.close()
             Exception('Run does not exist in this experiment')
-        
-    def save_run(self, run):
+        return run
+    
+    def save_run(self, experiment, run):
         '''
         Save a run from a specific experiment.
         '''
         if self.fp is None:
-            self.fp = open(os.path.join(self.directory,'{}_{}'.format(self.experiment.name, run.name)),'wb', 4096)
-        if len(self.event_buffer) < 1000:
-            self.event_buffer.append(run.events[-1])
-        else:
-            self.fp.write(json.dumps(self.event_buffer))
-            self.event_buffer = []
-
-    def stop_run(self, run):
-        self.fp.write(json.dumps(self.event_buffer))
+            print "making file pointer"
+            self.fp = open(os.path.join(self.directory,experiment.name,'{}.msg'.format(run.name)),'wb')
+        self.fp.write(msgpack.packb(run.events[-1]))
+        
+    def stop_run(self, experiment, run):
+        self.fp.write(msgpack.packb({'name':run.name, 'description':run.description, 'start_time':run.start_time, 'end_time':run.end_time}))
         self.fp.close()
         
     def list_runs(self, experiment):
         '''
         Get a list of the runs belonging to this experiment
         '''
+        run_names = []
         try:
-            exp = shelve.open(os.path.join(self.directory, experiment.name))
-            run_names = exp.keys()
-            exp.close()
+            for file in os.listdir(os.path.join(self.directory, experiment.name)):
+                if file.endswith('.msg'):
+                    run_names.append(os.path.splitext(file)[0])
         except Exception,e:
             print traceback.print_exc()
             Exception('Error updating run!')
-        run_names.remove('meta')
         return run_names
 
         

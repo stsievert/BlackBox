@@ -9,7 +9,7 @@ def newton(x):
     '''
     xi = 1
     true_root = math.sqrt(x)
-    for i in range(0,50000):
+    for i in range(0,500):
         xi = .5*(xi+x/xi)
         blackbox.log('iter', i)
         blackbox.log('xi', xi)
@@ -26,22 +26,24 @@ def error(x,y):
     return err
 
 def test_par_runs(i):
-    blackbox.takeoff(name='Newtons method worker:{}'.format(i), description='sample run', force=True)    
+    blackbox.takeoff('worker:2', 'sample run', True)    
     r = newton(i)
     blackbox.land()
     return r
 
 blackbox.set_experiment('SquareRootParallel')
-pool = Pool(4)
-result  = pool.map(test_par_runs, [2, 3, 4, 5])
-pool.close()
-pool.join()
-print result
+#pool = Pool(4)
+#result  = pool.map(test_par_runs, [2, 3, 4, 5])
+#pool.close()
+#pool.join()
+test_par_runs(2)
+#print result
 
 
-# exp = blackbox.get_experiment('SquareRootParallel')
-# for run in exp.runs:
-#     run = exp.get_run(run)
-#     print len(run.events)
+exp = blackbox.get_experiment('SquareRootParallel')
+runs = exp.list_runs()
+for run in runs:
+     run = exp.get_run(run)
+     print len(run.events)
 
 
