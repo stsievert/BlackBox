@@ -30,13 +30,13 @@ class MsgpackSerializer():
                 with open(os.path.join(dir_path,'info.json'), 'w') as fp:
                     start_time = time.time()
                     fp.write(json.dumps({'name':name, 'description':description, 'start_time':start_time}))
-                    experiment = Experiment(name, description, start_time)
+                    experiment = Experiment(name, description, start_time, self)
             else:
                 raise Exception('Experiment %s does not exist'%(name))
         else:
             with open(os.path.join(dir_path,'info.json'),'r') as fp:
                 info = json.load(fp)
-                experiment = Experiment(info['name'], info['description'], info['start_time'])
+                experiment = Experiment(info['name'], info['description'], info['start_time'], self)
         return experiment
 
     def get_run(self, experiment, name):
@@ -63,13 +63,13 @@ class MsgpackSerializer():
         Save a run from a specific experiment.
         '''
         if self.fp is None:
-            print "making file pointer"
             self.fp = open(os.path.join(self.directory,experiment.name,'{}.msg'.format(run.name)),'wb')
         self.fp.write(msgpack.packb(run.events[-1]))
         
     def stop_run(self, experiment, run):
         self.fp.write(msgpack.packb({'name':run.name, 'description':run.description, 'start_time':run.start_time, 'end_time':run.end_time}))
         self.fp.close()
+        self.fp = None
         
     def list_runs(self, experiment):
         '''

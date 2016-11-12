@@ -6,14 +6,14 @@ class Experiment():
     
     Used for accessing information about an experiment.
     '''
-    def __init__(self, name, description, start_time):
+    def __init__(self, name, description, start_time, serializer):
         '''
         Initialize a new experiment object. 
         '''
         self.name = name
         self.description = description
         self.start_time = time.time()
-        self.serializer = None
+        self.serializer = serializer
         
     def get_run(self, name):
         '''
