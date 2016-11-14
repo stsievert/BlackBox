@@ -10,6 +10,7 @@ setup(name='blackbox',
       install_requires=
       [
           ujson,
-          msgpack
+          msgpack,
+          msgpack_numpy
       ])
       

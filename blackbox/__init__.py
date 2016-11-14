@@ -47,7 +47,7 @@ class Recorder():
         Create a new run.
         
         TODO: The way this is setup right now - you can overwrite a run potentially. Need to fix that.
-        '''
+        '''            
         if self.run:
             raise Exception('Flight in progress! Please land first!')
         # TODO: Great example of how this is not thread safe! What happens if a thread creates this run in the meantime!
@@ -68,7 +68,14 @@ class Recorder():
         self.context = {}
         self.flying = False
         self.run = None
-  
+
+    def logdict(self, d):
+        '''
+        Log a key to the current state.
+        '''
+        self.current_state.update(d)
+
+        
     def log(self, key, item):
         '''
         Log a key to the current state.
@@ -101,16 +108,16 @@ class Recorder():
         # self.context.update({'module':frame[1],
         #                      'line':frame[2],
         #                      'function':frame[3]})
-        self.current_state.update(self.context)
-        self.run.add_state(self.current_state)
         if verbose:
-            l = ["{}: {}".format(key,item) for key,item in self.current_state.iteritems()]
-            l = "State Saved: {}".format(' '.join(l))
-            print l, os.getpid()
-        # reset the current_state. Note, the context SHOULD NOT be reset
+            l = ['{}: {}'.format(key,item) for key,item in self.current_state.iteritems()]
+            l = '{}'.format(' '.join(l))
+            print l
+        if not self.run is None and self.current_state:
+            self.current_state.update(self.context)
+            self.run.add_state(self.current_state)
+            # reset the current_state. Note, the context SHOULD NOT be reset
+            self.serializer.save_run(self.experiment, self.run)
         self.current_state = {}
-        self.serializer.save_run(self.experiment, self.run)
-
 
     
 _recorder = Recorder()
@@ -148,36 +155,37 @@ def log(key, value):
     '''
     Log a key value pair into the state.
     '''
-    if not _recorder.experiment is None and not _recorder.run is None:
-        _recorder.log(key,value)
+    _recorder.log(key,value)
 
+def logdict(d):
+    '''
+    Log a dictionary into the state.
+    '''
+    _recorder.logdict(d)
+    
 def add_overhead(key, value):
     '''
     Add a key value pair to the context. The context will get added to each save until it is cleared.
     '''
-    if not _recorder.experiment is None and not _recorder.run is None:
-        _recorder.update_context(key, value)
+    _recorder.update_context(key, value)
 
 def remove_overhead(key):
     '''
     Remove a key from the context.
     '''
-    if not _recorder.experiment is None and not _recorder.run is None:
-        _recorder.update_context(key, None, remove=True)
+    _recorder.update_context(key, None, remove=True)
 
 def empty_overhead():
     '''
     Clear the context that gets added on each save.
     '''
-    if not _recorder.experiment is None and not _recorder.run is None:
-        _recorder.update_context(key, None, clear=True)
+    _recorder.update_context(key, None, clear=True)
 
 def save(verbose=False):
     '''
     Save the current state. It will be handed over to the serializer to be logged.
     '''
-    if not _recorder.experiment is None and not _recorder.run is None:
-        _recorder.save(verbose=verbose)
+    _recorder.save(verbose=verbose)
 
 def record(wrapped):
     '''
@@ -191,6 +199,7 @@ def record(wrapped):
         result = wrapped(*args,**kwargs)
         te = time.time()
         #print 'in inner', wrapped.__name__
+        _recorder.save(level=2)
         _recorder.log('function_call',wrapped.__name__)
         _recorder.log('time_called',ts)
         _recorder.log('time_ended', te)

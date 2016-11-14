@@ -11,7 +11,7 @@ blackbox.set_experiment('ExampleExperiment')
 
 blackbox.takeoff('Run 1', force=True)
 blackbox.log('run_1_var', 1)
-blackbox.save()
+blackbox.save(verbose=True)
 blackbox.land()
 
 blackbox.takeoff('Run 2', force=True)
@@ -20,6 +20,7 @@ func()
 blackbox.save()
 blackbox.land()
 
+print 'Saved data'
 exp = blackbox.get_experiment('ExampleExperiment')
 for run in exp.list_runs():
     run = exp.get_run(run)

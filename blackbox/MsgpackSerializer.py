@@ -1,5 +1,7 @@
 import sys, inspect, os, time,  traceback, random, string
 import msgpack
+import msgpack_numpy as m
+m.patch()
 import ujson as json
 from .types import Experiment, Run, Serializer
         

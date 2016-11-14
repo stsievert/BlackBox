@@ -85,3 +85,5 @@ There are many ways to get around this! Here are a couple:
 
 
 There might be some more ideas [here](http://stackoverflow.com/questions/641420/how-should-i-log-while-using-multiprocessing-in-python). There seems to be a recommended solution using pipes. I am very curious about it! It might run into the same issues as I do (see cdleary's comment and in general that whole comment thread).
+
+11/12/2016 - I think getter methods for accesing experiment info should be in the serializer. However, I suspect they should be static...you should not need any serializer state to access them.

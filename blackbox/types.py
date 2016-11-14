@@ -42,8 +42,9 @@ class Run():
         '''
         Add a state to the current set of states. 
         '''
-        state.update({'timestamp': time.time()})
-        self.events.append(state)
+        if state:
+            state.update({'timestamp': time.time()})
+            self.events.append(state)
 
     def dataframe(self):
         pass
