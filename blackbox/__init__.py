@@ -2,7 +2,7 @@
 Main code file for blackbox.
 '''
 import sys, inspect, os, time, uuid, traceback
-from MsgpackSerializer import MsgpackSerializer
+from .MsgpackSerializer import MsgpackSerializer
 from .types import Experiment, Run, Serializer
 
 
@@ -109,9 +109,9 @@ class Recorder():
         #                      'line':frame[2],
         #                      'function':frame[3]})
         if verbose:
-            l = ['{}: {}'.format(key,item) for key,item in self.current_state.iteritems()]
+            l = ['{}: {}'.format(key,item) for key,item in self.current_state.items()]
             l = '{}'.format(' '.join(l))
-            print l
+            print(l)
         if not self.run is None and self.current_state:
             self.current_state.update(self.context)
             self.run.add_state(self.current_state)

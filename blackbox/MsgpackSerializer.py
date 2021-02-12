@@ -28,7 +28,7 @@ class MsgpackSerializer():
                         if not os.path.isdir(dir_path):
                             raise Exception('%s already exists as path. Please use a different directory name'%(dir_path))
                 else:
-                    print 'dir path exists and is a dir'
+                    print('dir path exists and is a dir')
                 with open(os.path.join(dir_path,'info.json'), 'w') as fp:
                     start_time = time.time()
                     fp.write(json.dumps({'name':name, 'description':description, 'start_time':start_time}))
@@ -55,7 +55,7 @@ class MsgpackSerializer():
                 run.end_time = info['end_time']
                 run.events = events
         except:
-            print traceback.print_exc()
+            print(traceback.print_exc())
             exp.close()
             Exception('Run does not exist in this experiment')
         return run
@@ -82,8 +82,8 @@ class MsgpackSerializer():
             for file in os.listdir(os.path.join(self.directory, experiment.name)):
                 if file.endswith('.msg'):
                     run_names.append(os.path.splitext(file)[0])
-        except Exception,e:
-            print traceback.print_exc()
+        except Exception as e:
+            print(traceback.print_exc())
             Exception('Error updating run!')
         return run_names
 

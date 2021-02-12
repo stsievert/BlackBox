@@ -16,7 +16,7 @@ class JSONSerializer():
         # See this post: http://stackoverflow.com/questions/273192/how-to-check-if-a-directory-exists-and-create-it-if-necessary
         dir_path = os.path.join(self.directory, name)
         if not os.path.exists(os.path.join(dir_path, 'info.json')):
-            print "doesnt exist"
+            print("doesnt exist")
             # If experiment directory does not exist
             if create_not_exists:
                 if not os.path.isdir(dir_path):
@@ -27,7 +27,7 @@ class JSONSerializer():
                         if not os.path.isdir(dir_path):
                             raise Exception('%s already exists as path. Please use a different directory name'%(dir_path))
                 else:
-                    print 'dir path exists and is a dir'
+                    print('dir path exists and is a dir')
                 with open(os.path.join(dir_path,'info.json'), 'w') as fp:
                     start_time = time.time()
                     fp.write(json.dumps({'name':name, 'description':description, 'start_time':start_time}))
@@ -48,7 +48,7 @@ class JSONSerializer():
         try:
             pass
         except:
-            print traceback.print_exc()
+            print(traceback.print_exc())
             exp.close()
             Exception('Run does not exist in this experiment')
         
@@ -74,10 +74,10 @@ class JSONSerializer():
         '''
         try:
             exp = shelve.open(os.path.join(self.directory, experiment.name))
-            run_names = exp.keys()
+            run_names = list(exp.keys())
             exp.close()
-        except Exception,e:
-            print traceback.print_exc()
+        except Exception as e:
+            print(traceback.print_exc())
             Exception('Error updating run!')
         run_names.remove('meta')
         return run_names

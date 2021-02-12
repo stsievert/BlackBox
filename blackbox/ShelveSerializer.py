@@ -28,10 +28,10 @@ class AsyncListener():
                 if not experiment is None and exp is None:
                     exp = shelve.open(os.path.join(directory, experiment.name))
 
-                if not run.name in timestamps.keys():
+                if not run.name in list(timestamps.keys()):
                     closed+=1
                     
-                if not run.name in timestamps.keys() or timestamp > timestamps[run.name]:
+                if not run.name in list(timestamps.keys()) or timestamp > timestamps[run.name]:
                     exp[run.name] = run.events
                     timestamps[run.name] = time.time()
 
@@ -41,7 +41,7 @@ class AsyncListener():
                         exp.close()
                         exp=None
             except:
-                print 'excepted!'
+                print('excepted!')
                 raise
             
     def put(self, directory, experiment, run, timestamp, close):
@@ -96,7 +96,7 @@ class ShelveSerializer():
             exp.close()
             return run
         except:
-            print traceback.print_exc()
+            print(traceback.print_exc())
             exp.close()
             Exception('Run does not exist in this experiment')
         
@@ -116,10 +116,10 @@ class ShelveSerializer():
         '''
         try:
             exp = shelve.open(os.path.join(self.directory, experiment.name))
-            run_names = exp.keys()
+            run_names = list(exp.keys())
             exp.close()
-        except Exception,e:
-            print traceback.print_exc()
+        except Exception as e:
+            print(traceback.print_exc())
             Exception('Error updating run!')
         run_names.remove('meta')
         return run_names
